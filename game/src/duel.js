@@ -16,6 +16,10 @@ export function newDuel(rng, seed) {
   const opening = dealOpening(rng);
   return {
     seed,
+    /** The clock reading the current hand was dealt at, for the deal animation. */
+    handDealtAt: 0,
+    /** When the foe's cards turned face up this round, for the flip. */
+    revealStartedAt: 0,
     phase: PHASE.TITLE,
     hp: DUEL.hp,
     foeHp: DUEL.hp,
@@ -25,6 +29,8 @@ export function newDuel(rng, seed) {
     foeHand: opening.foeHand,
     playerDiscard: opening.playerDiscard,
     foeDiscard: opening.foeDiscard,
+    /** Clock reading each gate last received a card, for its drop animation. */
+    placedAt: {},
     /** What each side has committed this round: { laneKey: card }. */
     playerPlays: {},
     foePlays: {},
@@ -52,7 +58,7 @@ export function placedEveryLane(state) {
  * Put the selected card on a gate. Returns a short line for the log, or null when the
  * move is not allowed (no card, gate already held by the player, wrong phase).
  */
-export function placeCard(state, cardId, laneIndex) {
+export function placeCard(state, cardId, laneIndex, clock) {
   if (state.phase !== PHASE.CHOOSE) return null;
   const gate = GATES[laneIndex];
   if (!gate || state.playerPlays[gate.key]) return null;
@@ -60,6 +66,7 @@ export function placeCard(state, cardId, laneIndex) {
   if (index === -1) return null;
   const card = state.playerHand[index];
   state.playerPlays[gate.key] = card;
+  if (clock !== undefined) state.placedAt = { ...(state.placedAt || {}), [gate.key]: clock };
   state.selectedCardId = null;
   state.selectedLane = nextOpenLane(state);
   return `${card.name} takes the ${gate.name}`;
@@ -73,6 +80,7 @@ export function recallCard(state, laneIndex) {
   const card = state.playerPlays[gate.key];
   if (!card) return null;
   delete state.playerPlays[gate.key];
+  if (state.placedAt) delete state.placedAt[gate.key];
   state.selectedCardId = card.id;
   state.selectedLane = laneIndex;
   return `${card.name} returns to hand`;
@@ -175,6 +183,7 @@ export function commitRound(state) {
   state.clash = clash;
   state.phase = PHASE.REVEAL;
   state.revealElapsed = 0;
+  state.lastDealt = { player: 0, foe: 0 };
   return clash;
 }
 
@@ -188,6 +197,7 @@ export function settleRound(state) {
   }
   state.foeHp = Math.max(0, state.foeHp - toFoe);
   state.hp = Math.max(0, state.hp - toPlayer);
+  state.lastDealt = { player: toPlayer, foe: toFoe };
 
   for (const entry of state.clash) {
     if (entry.mine) state.playerDiscard.push(entry.mine);
@@ -213,17 +223,25 @@ export function settleRound(state) {
 }
 
 /** Begin the next round: both wardens draw back up, the board clears. */
-export function nextRound(state, rng) {
+export function nextRound(state, rng, clock) {
   state.round += 1;
   state.playerPlays = {};
   state.foePlays = {};
   state.clash = [];
+  state.placedAt = {};
+  state.handDealtAt = clock === undefined ? state.handDealtAt : clock;
   draw(state.playerHand, state.deck, state.playerDiscard, DUEL.handSize, rng);
   draw(state.foeHand, state.deck, state.foeDiscard, DUEL.handSize, rng);
   state.phase = PHASE.CHOOSE;
   state.selectedCardId = state.playerHand.length ? state.playerHand[0].id : null;
   state.selectedLane = 0;
   state.revealElapsed = 0;
+}
+
+/** Mark the moment a hand is shown, so the renderer deals it in. */
+export function stampDeal(state, clock) {
+  state.handDealtAt = clock;
+  return state;
 }
 
 /** Advance the reveal timer; returns true when the reveal is finished and settled. */

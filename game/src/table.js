@@ -4,6 +4,7 @@
 import { FIELD, GATES, LAYOUT, PALETTE, FONT, FONT_UI, SIGIL_ORDER, SIGILS } from './config.js';
 import { drawCard, drawCardBack, drawSigil, roundRect } from './cards-draw.js';
 import { PHASE, placedEveryLane } from './duel.js';
+import { ANIM, easeOut, progress } from './anim.js';
 
 /** The backdrop: a dusk sky, the broken arch, embers drifting up. */
 export function drawTable(ctx, state, t) {
@@ -71,8 +72,25 @@ function drawArch(ctx) {
   ctx.restore();
 }
 
+/** The dusk sky on its own, for a screen that wants the light without the table. */
+export function drawSky(ctx) {
+  const { width, height } = FIELD;
+  const sky = ctx.createLinearGradient(0, 0, 0, height);
+  sky.addColorStop(0, PALETTE.sky0);
+  sky.addColorStop(0.52, PALETTE.sky1);
+  sky.addColorStop(1, '#150f1c');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, width, height);
+
+  const glow = ctx.createRadialGradient(width / 2, 300, 40, width / 2, 300, 520);
+  glow.addColorStop(0, 'rgba(255, 138, 90, 0.16)');
+  glow.addColorStop(1, 'rgba(255, 138, 90, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
+}
+
 /** Slow embers rising off the floor; they wrap so the loop never needs a reset. */
-function drawEmbers(ctx, t) {
+export function drawEmbers(ctx, t) {
   ctx.save();
   for (let i = 0; i < 26; i += 1) {
     const lane = (i * 97) % FIELD.width;
@@ -156,16 +174,25 @@ function drawGateLine(ctx, state, t) {
       ctx.restore();
     }
 
-    // What stands on the gate: the foe above, the player below.
+    // What stands on the gate: the foe above, the player below. On the reveal the foe's card
+    // turns face up, one gate after another, so the round reads left to right.
     if (theirs) {
+      const flip = state.phase === PHASE.REVEAL
+        ? progress(state.revealElapsed - 0.08 - index * 0.1, ANIM.flipDuration)
+        : 1;
       drawCard(ctx, theirs, cx - LAYOUT.revealCardW / 2, LAYOUT.gateCardTop, LAYOUT.revealCardW, LAYOUT.revealCardH, {
         lift: 8,
+        flip,
         selected: entry && entry.winner === 'foe' && state.phase === PHASE.REVEAL,
         dim: state.phase === PHASE.REVEAL && entry && entry.winner !== 'foe',
       });
     }
     if (mine) {
-      drawCard(ctx, mine, cx - LAYOUT.revealCardW / 2, LAYOUT.gateCardBottom, LAYOUT.revealCardW, LAYOUT.revealCardH, {
+      // A card placed this frame drops the last of the way onto its gate.
+      const settle = state.placedAt && state.placedAt[gate.key]
+        ? easeOut(progress(t - state.placedAt[gate.key], ANIM.placeDuration))
+        : 1;
+      drawCard(ctx, mine, cx - LAYOUT.revealCardW / 2, LAYOUT.gateCardBottom - (1 - settle) * 26, LAYOUT.revealCardW, LAYOUT.revealCardH, {
         lift: 8,
         selected: entry && entry.winner === 'player' && state.phase === PHASE.REVEAL,
         dim: state.phase === PHASE.REVEAL && entry && entry.winner !== 'player',
@@ -188,7 +215,7 @@ function drawGateLine(ctx, state, t) {
 
     // Damage floating off a won gate.
     if (entry && state.phase === PHASE.REVEAL && entry.winner) {
-      const rise = Math.min(1, state.revealElapsed / 0.5);
+      const rise = easeOut(progress(state.revealElapsed - 0.5, ANIM.damageRise));
       ctx.save();
       ctx.globalAlpha = Math.max(0, 1 - Math.max(0, (state.revealElapsed - 0.9) / 0.6));
       ctx.textAlign = 'center';
@@ -274,17 +301,25 @@ function drawWheelLegend(ctx) {
 }
 
 /** The player's hand along the bottom, the foe's face-down hand along the top. */
-export function drawHands(ctx, state, hoveredCardId) {
+export function drawHands(ctx, state, hoveredCardId, clock) {
   const { handY, handCardW, handCardH, handGap } = LAYOUT;
   const hand = state.playerHand;
   const totalW = hand.length * handCardW + Math.max(0, hand.length - 1) * handGap;
-  let x = (FIELD.width - totalW) / 2;
+  const startX = (FIELD.width - totalW) / 2;
+  let x = startX;
+  const now = clock === undefined ? Number.POSITIVE_INFINITY : clock;
+  const dealtAt = state.handDealtAt === undefined ? -Infinity : state.handDealtAt;
 
-  hand.forEach((card) => {
+  hand.forEach((card, index) => {
     const selected = state.selectedCardId === card.id;
     const placed = Object.values(state.playerPlays).some((c) => c.id === card.id);
     const lift = selected ? 16 : hoveredCardId === card.id ? 8 : 0;
-    drawCard(ctx, card, x, handY - lift, handCardW, handCardH, {
+
+    // A dealt card slides up into the hand, each a beat after the one before it.
+    const dealt = easeOut(progress(now - dealtAt - index * ANIM.dealStagger, ANIM.dealDuration));
+    const rise = (1 - dealt) * 46;
+
+    drawCard(ctx, card, x, handY - lift + rise, handCardW, handCardH, {
       selected,
       dim: placed,
       lift: lift + 6,

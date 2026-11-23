@@ -17,12 +17,17 @@ export function drawTitle(ctx, t) {
 
   // The four sigils, slowly turning far behind the name, well clear of the type.
   ctx.save();
+  // Pushed wide, so no ambient sigil sits behind the menu's own type.
+  const corners = [
+    { x: 168, y: 168 },
+    { x: 1112, y: 168 },
+    { x: 168, y: 556 },
+    { x: 1112, y: 556 },
+  ];
   SIGIL_ORDER.forEach((key, i) => {
-    const angle = (Math.PI * 2 * i) / 4 + t * 0.1;
-    const x = 640 + Math.cos(angle) * 430;
-    const y = 250 + Math.sin(angle) * 210;
-    ctx.globalAlpha = 0.16;
-    drawSigil(ctx, SIGILS[key], x, y, 84, false);
+    const bob = Math.sin(t * 0.4 + i * 1.7) * 10;
+    ctx.globalAlpha = 0.15;
+    drawSigil(ctx, SIGILS[key], corners[i].x, corners[i].y + bob, 96, false);
   });
   ctx.restore();
 
@@ -120,10 +125,11 @@ function drawTitleWheel(ctx) {
 }
 
 /** The end screen: win, loss or a drawn gate, with the tally and a way back. */
-export function drawEnd(ctx, state) {
+export function drawEnd(ctx, state, t) {
   const { width, height } = FIELD;
   const win = state.winner === 'player';
   const draw = state.winner === 'draw';
+  const clock = t === undefined ? 0 : t;
 
   ctx.save();
   const veil = ctx.createLinearGradient(0, 0, 0, height);
@@ -131,6 +137,22 @@ export function drawEnd(ctx, state) {
   veil.addColorStop(1, 'rgba(10, 8, 14, 0.96)');
   ctx.fillStyle = veil;
   ctx.fillRect(0, 0, width, height);
+
+  // On a win the four sigils lift behind the panel, one after another, as the flourish.
+  if (win) {
+    ctx.save();
+    SIGIL_ORDER.forEach((key, i) => {
+      const rise = Math.max(0, Math.min(1, (clock - i * 0.1) / 1.0));
+      if (rise <= 0) return;
+      // They rise out of the floor and come to rest in the band above the panel, where the
+      // verdict's own light does not wash them out.
+      const x = 640 + (i - 1.5) * 150;
+      const y = 300 - rise * 172;
+      ctx.globalAlpha = 0.42 * Math.min(1, rise * 1.6);
+      drawSigil(ctx, SIGILS[key], x, y, 54 + rise * 22, true);
+    });
+    ctx.restore();
+  }
 
   // A solid panel, so the gates behind never bleed through the verdict.
   roundRect(ctx, 288, 168, 704, 388, 16);

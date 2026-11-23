@@ -13,6 +13,9 @@ export function buildScene(api, scene) {
   const { state } = api;
   api.startDuel();
   const duel = state.duel;
+  // A screenshot holds still: the hand is already dealt and nothing is mid-drop.
+  duel.handDealtAt = -1000;
+  duel.placedAt = {};
 
   if (scene === 'start') {
     state.screen = 'title';
@@ -40,7 +43,7 @@ export function buildScene(api, scene) {
       duel.hp = Math.max(6, duel.hp);
       duel.foeHp = Math.max(6, duel.foeHp);
     }
-    if (!last) nextRound(duel, state.rng);
+    if (!last) nextRound(duel, state.rng, 0);
   }
 
   if (scene === 'win') {
@@ -62,7 +65,7 @@ export function buildScene(api, scene) {
 
   // The play scene: a hand mid-round with two gates already held and a third waiting.
   if (duel.phase !== PHASE.CHOOSE) {
-    nextRound(duel, state.rng);
+    nextRound(duel, state.rng, 0);
   }
   duel.playerPlays = {};
   duel.foePlays = {};

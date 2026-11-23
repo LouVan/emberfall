@@ -6,6 +6,7 @@ import { makeRandom, seedFromLocation } from './random.js';
 import {
   PHASE,
   newDuel,
+  stampDeal,
   placeCard,
   recallCard,
   commitRound,
@@ -14,7 +15,7 @@ import {
   placedEveryLane,
   nextOpenLane,
 } from './duel.js';
-import { drawTable, drawHud, drawHands, drawLog } from './table.js';
+import { drawTable, drawHud, drawHands, drawLog, drawSky, drawEmbers } from './table.js';
 import { drawTitle, drawEnd, drawRules } from './screens.js';
 import { bindInput } from './input.js';
 import { buildScene } from './shots.js';
@@ -58,6 +59,7 @@ function startDuel() {
   state.duel.selectedCardId = state.duel.playerHand[0] ? state.duel.playerHand[0].id : null;
   state.duel.selectedLane = 0;
   state.screen = 'duel';
+  stampDeal(state.duel, state.clock);
   say('The gate opens. Choose a card, then a gate.');
 }
 
@@ -80,7 +82,7 @@ function handleLane(lane, shift) {
   }
   const cardId = duel.selectedCardId ?? (duel.playerHand[0] && duel.playerHand[0].id);
   if (cardId == null) return;
-  placeCard(duel, cardId, lane);
+  placeCard(duel, cardId, lane, state.clock);
   if (placedEveryLane(duel)) {
     say('All gates held. Press Enter to commit the round.');
     commitIfReady();
@@ -176,7 +178,7 @@ function advanceReveal(dt) {
   }
   duel.revealElapsed = 1.15;
   if (duel.revealElapsed >= 1.55) {
-    nextRound(duel, state.rng);
+    nextRound(duel, state.rng, state.clock);
     say('A new round. Choose a card, then a gate.');
   }
 }
@@ -190,27 +192,21 @@ function update(dt) {
     } else {
       duel.revealElapsed += dt;
       if (duel.revealElapsed >= 1.55) {
-        nextRound(duel, state.rng);
+        nextRound(duel, state.rng, state.clock);
         say('A new round. Choose a card, then a gate.');
       }
     }
   }
 }
 
-/** A table with nothing on it, for the title to sit over. */
-function drawEmptyTable() {
-  drawTable(
-    ctx,
-    {
-      phase: PHASE.CHOOSE,
-      playerPlays: {},
-      foePlays: {},
-      clash: [],
-      selectedLane: -1,
-      revealElapsed: 0,
-    },
-    state.clock,
-  );
+/**
+ * The title's own backdrop: the dusk sky and the drifting embers, and none of the table's
+ * furniture. A title that shows the gates and the empty slots behind its own type reads as a
+ * double exposure; this keeps the door and drops the room.
+ */
+function drawTitleBackdrop(ctx, t) {
+  drawSky(ctx);
+  drawEmbers(ctx, t);
 }
 
 function render() {
@@ -219,16 +215,16 @@ function render() {
   const duel = state.duel;
 
   if (state.screen === 'title') {
-    drawEmptyTable();
+    drawTitleBackdrop(ctx, state.clock);
     drawTitle(ctx, state.clock);
     if (state.showRules) drawRules(ctx);
     return;
   }
   drawTable(ctx, duel, state.clock);
-  drawHands(ctx, duel, state.hoveredCardId);
+  drawHands(ctx, duel, state.hoveredCardId, state.clock);
   drawHud(ctx, duel);
   drawLog(ctx, duel);
-  if (state.screen === 'over' || duel.phase === PHASE.OVER) drawEnd(ctx, duel);
+  if (state.screen === 'over' || duel.phase === PHASE.OVER) drawEnd(ctx, duel, state.clock);
 }
 
 bindInput(canvas, {
@@ -264,6 +260,7 @@ function frame(time) {
 // own advance so the frame holds still for the camera.
 if (startScene) {
   buildScene({ startDuel, state, handlePick, handleLane, commitIfReady }, startScene);
+  state.clock = 1.6;
   render();
 } else {
   requestAnimationFrame(frame);
