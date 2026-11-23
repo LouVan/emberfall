@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emberfall — a card duel at the Sundered Gate</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0b12; }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #announce { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+</head>
+<body>
+<canvas id="stage" aria-label="Emberfall: a duel of cards across three gates. Choose a card, choose a gate, break the other warden's line."></canvas>
+<p id="announce" role="status" aria-live="polite"></p>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
